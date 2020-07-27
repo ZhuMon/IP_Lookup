@@ -17,9 +17,11 @@ static __inline__ unsigned long long rdtsc(void)
 }
 ////////////////////////////////////////////////////////////////////////////////////
 struct balanced_node {
-    unsigned char port;
-    int BF;
-    char *prefix;
+    unsigned int port;
+    int layer;
+    int highest_layer;  // -1: left higher or 1: right higher
+    unsigned char len;
+    unsigned int ip;
     struct balanced_node *left, *right;
 };
 ////////////////////////////////////////////////////////////////////////////////////
@@ -34,62 +36,91 @@ unsigned long long int *my_clock;
 int num_node = 0;  // total number of nodes in the binary trie
 struct balanced_node **bt_root;  // an array of pointer
 int total_layer = 1;             // {0, 1}
+void print_bt(struct balanced_node *node, int layer);
+void print_BF(struct balanced_node *node, int layer);
 ////////////////////////////////////////////////////////////////////////////////////
-int cover(char *a, char *b)
+int compare_prefix(unsigned int a,
+                   unsigned char len_a,
+                   unsigned int b,
+                   unsigned char len_b)
 {
-    for (; *a && *b; a++, b++) {
-        if (*a != *b) {
-            return 0;
-        }
-    }
-    if (*b) {  // a cover b (len(b) > len(a))
+    unsigned char len = (len_a > len_b) ? len_b : len_a;
+    a >>= (32 - len);
+    b >>= (32 - len);
+    if (a == b) {
+        return 0;  // (a cover b) or (b cover a) or (a == b)
+    } else if (a > b) {
         return 1;
-    } else if (*a) {  // b cover a (len(a) > len(b))
+    } else {
         return -1;
     }
-    perror("cover failed\n");
-    exit(-1);
 }
 ////////////////////////////////////////////////////////////////////////////////////
-int compare_prefix(char *a, char *b)
+void cal_layer(struct balanced_node *root_node, struct balanced_node *target)
 {
-    for (; *a && *b; a++, b++) {
-        if (*a == *b)
-            continue;
-        else if (*a > *b)
-            return 1;
-        else
-            return -1;
+    struct balanced_node *now = root_node;
+    while (now) {
+        if (target->ip > now->ip) {
+            if (now->highest_layer == 1)  // right tree higher
+                now->layer += 1;
+            else if (now->highest_layer == -1) {
+                if (!now->left ||
+                    now->left->layer < now->right->layer + 1) {  // + new node
+                    now->highest_layer = 1;
+                    now->layer = now->right->layer + 1;
+                }
+            } else {  // now->right == target
+                now->layer += 1;
+                now->highest_layer = 1;
+            }
+            now = now->right;
+        } else if (target->ip < now->ip) {
+            if (now->highest_layer == -1)  // left tree higher
+                now->layer += 1;
+            else if (now->highest_layer == 1) {
+                if (!now->right ||
+                    now->right->layer < now->left->layer + 1) {  // + new node
+                    now->highest_layer = 1;
+                    now->layer = now->left->layer + 1;
+                }
+            } else {  // now->right == target
+                now->layer += 1;
+                now->highest_layer = -1;
+            }
+            now = now->left;
+        } else {
+            break;
+        }
     }
-    return 0;  // cover or equal
-}
-////////////////////////////////////////////////////////////////////////////////////
-int cal_BF(struct balanced_node *node, int layer)
-{
-    if (!node) {
-        return layer - 1;
-    }
-
-    int left_layer = cal_BF(node->left, layer + 1);
-    int right_layer = cal_BF(node->right, layer + 1);
-
-    node->BF = left_layer - right_layer;
-    return (left_layer >= right_layer) ? left_layer : right_layer;
 }
 struct balanced_node *find_highest_wrong_BF(struct balanced_node *node,
-                                            struct balanced_node *target,
-                                            struct balanced_node *wrong)
+                                            struct balanced_node *target)
 {
-    if (node && (node->BF > 1 || node->BF < -1)) {
-        wrong = node;
+    struct balanced_node *now = node;
+    while (now->left != target && now->right != target) {
+        if (now->left && now->right) {
+            if ((now->left->layer - now->right->layer > 1) ||
+                (now->left->layer - now->right->layer < -1)) {
+                return now;
+            }
+            if (target->ip > now->ip) {
+                now = now->right;
+            } else if (target->ip < now->ip) {
+                now = now->left;
+            } else {  // target == root
+                perror("impossible! target == root\n");
+                exit(1);
+            }
+        } else if (now->left) {
+            if (now->left->layer > 0)
+                return now;
+            now = now->left;
+        } else if (now->right) {
+            if (now->right->layer > 0)
+                return now;
+        }
     }
-    if (node->left && compare_prefix(node->prefix, target->prefix) > 0) {
-        wrong = find_highest_wrong_BF(node->left, target, wrong);
-    } else if (node->right &&
-               compare_prefix(node->prefix, target->prefix) < 0) {
-        wrong = find_highest_wrong_BF(node->right, target, wrong);
-    }
-    return wrong;
+    return NULL;
 }
 struct balanced_node *find_parent(int layer, struct balanced_node *target)
 {
@@ -101,11 +132,9 @@ struct balanced_node *find_parent(int layer, struct balanced_node *target)
     }
     struct balanced_node *parent = bt_root[layer];
     while (parent->left != target && parent->right != target) {
-        if (parent->left &&
-            compare_prefix(parent->prefix, target->prefix) > 0) {
+        if (parent->left && parent->ip > target->ip) {
             parent = parent->left;
-        } else if (parent->right &&
-                   compare_prefix(parent->prefix, target->prefix) < 0) {
+        } else if (parent->right && parent->ip < target->ip) {
             parent = parent->right;
         } else {
             perror("Find parent failed!!!\n");
@@ -116,24 +145,21 @@ struct balanced_node *find_parent(int layer, struct balanced_node *target)
 }
 void rotate(int layer, struct balanced_node *target)
 {
-    cal_BF(bt_root[layer], 0);
+    cal_layer(bt_root[layer], target);
     struct balanced_node *start, *node2, *node3, *parent, *mid;
-    start = find_highest_wrong_BF(bt_root[layer], target, NULL);
+    start = find_highest_wrong_BF(bt_root[layer], target);
 
-    parent = find_parent(layer, start);
-    while (start != NULL) {
-        if (start->left && compare_prefix(start->prefix, target->prefix) > 0) {
+    if (start != NULL) {
+        parent = find_parent(layer, start);
+        if (start->left && start->ip > target->ip) {
             node2 = start->left;
-            if (start->left->left &&
-                compare_prefix(start->left->prefix, target->prefix) > 0) {
+            if (start->left->left && start->left->ip > target->ip) {
                 // LL
                 start->left = node2->right;
                 node2->right = start;
 
                 mid = node2;
-            } else if (start->left->right &&
-                       compare_prefix(start->left->prefix, target->prefix) <
-                           0) {
+            } else if (start->left->right && start->left->ip < target->ip) {
                 // LR
                 node3 = node2->right;
 
@@ -145,11 +171,9 @@ void rotate(int layer, struct balanced_node *target)
 
                 mid = node3;
             }
-        } else if (start->right &&
-                   compare_prefix(start->prefix, target->prefix) < 0) {
+        } else if (start->right && start->ip < target->ip) {
             node2 = start->right;
-            if (start->right->left &&
-                compare_prefix(start->right->prefix, target->prefix) > 0) {
+            if (start->right->left && start->right->ip > target->ip) {
                 // RL
                 node3 = node2->left;
 
@@ -160,9 +184,7 @@ void rotate(int layer, struct balanced_node *target)
                 node3->left = start;
 
                 mid = node3;
-            } else if (start->right->right &&
-                       compare_prefix(start->right->prefix, target->prefix) <
-                           0) {
+            } else if (start->right->right && start->right->ip < target->ip) {
                 // RR
                 start->right = node2->left;
                 node2->left = start;
@@ -171,6 +193,7 @@ void rotate(int layer, struct balanced_node *target)
             }
         } else {
             perror("rotate error\n");
+            printf("target->ip: %x, len: %d\n", target->ip, target->len);
             exit(-1);
         }
 
@@ -181,12 +204,11 @@ void rotate(int layer, struct balanced_node *target)
         } else if (parent == start) {  // start == root
             bt_root[layer] = mid;
         } else {
+            printf("parent: %x\n", parent->ip);
+            printf("start: %x\n", start->ip);
             perror("Find parent failed\n");
             exit(-1);
         }
-
-        cal_BF(bt_root[layer], 0);
-        start = find_highest_wrong_BF(bt_root[layer], target, NULL);
     }
 }
 char *convert_to_prefix(unsigned int ip, unsigned int len)
@@ -208,12 +230,15 @@ void print_BF(struct balanced_node *node, int layer)
     for (i = 0; i < layer; i++) {
         printf("\t");
     }
-    printf("%d", node->BF);
+    printf("%d", node->layer);
     printf("\n");
     print_BF(node->left, layer + 1);
     print_BF(node->right, layer + 1);
 }
-void insert_to_balanced_tree(int layer, char *prefix, unsigned char nexthop)
+void insert_to_balanced_tree(int layer,
+                             unsigned int ip,
+                             unsigned char len,
+                             unsigned char nexthop)
 {
     /*printf("BF: --- %d\n", bt_root[layer]->BF);*/
     /*print_BF(bt_root[layer], 0);*/
@@ -224,14 +249,16 @@ void insert_to_balanced_tree(int layer, char *prefix, unsigned char nexthop)
             (struct balanced_node *) malloc(sizeof(struct balanced_node));
         printf("realloc : %d layer\n", layer);
         total_layer = layer;
-        bt_root[layer]->prefix = NULL;
+        bt_root[layer]->port = 256;
     }
-    if (bt_root[layer]->prefix == NULL) {
+    if (bt_root[layer]->port == 256) {
         bt_root[layer]->port = nexthop;
-        bt_root[layer]->prefix = prefix;
+        bt_root[layer]->ip = ip;
+        bt_root[layer]->len = len;
         bt_root[layer]->left = NULL;
         bt_root[layer]->right = NULL;
-        bt_root[layer]->BF = 0;
+        bt_root[layer]->layer = 0;
+        bt_root[layer]->highest_layer = 0;
         return;
     }
     struct balanced_node *now;
@@ -239,23 +266,27 @@ void insert_to_balanced_tree(int layer, char *prefix, unsigned char nexthop)
     struct balanced_node *new =
         (struct balanced_node *) malloc(sizeof(struct balanced_node));
     new->port = nexthop;
-    new->prefix = prefix;
+    new->ip = ip;
+    new->len = len;
     new->left = NULL;
     new->right = NULL;
-    new->BF = 0;
+    new->layer = 0;
+    new->highest_layer = 0;
     while (now) {
         // cover exist node -> level up
-        if (cover(prefix, now->prefix) > 0) {
+        if (compare_prefix(ip, len, now->ip, now->len) == 0 && len < now->len) {
             free(new);
-            insert_to_balanced_tree(layer + 1, prefix, nexthop);
+            insert_to_balanced_tree(layer + 1, ip, len, nexthop);
             break;
-        } else if (cover(prefix, now->prefix) < 0) {
-            insert_to_balanced_tree(layer + 1, now->prefix, now->port);
-            now->prefix = prefix;
+        } else if (compare_prefix(ip, len, now->ip, now->len) == 0 &&
+                   len > now->len) {
+            free(new);
+            insert_to_balanced_tree(layer + 1, now->ip, now->len, now->port);
+            now->ip = ip;
+            now->len = len;
             now->port = nexthop;
             break;
-        }
-        if (compare_prefix(prefix, now->prefix) < 0) {
+        } else if (ip < now->ip) {
             if (!now->left) {
                 now->left = new;
                 rotate(layer, new);
@@ -263,7 +294,7 @@ void insert_to_balanced_tree(int layer, char *prefix, unsigned char nexthop)
             } else {
                 now = now->left;
             }
-        } else if (compare_prefix(prefix, now->prefix) > 0) {
+        } else if (ip > now->ip) {
             if (!now->right) {
                 now->right = new;
                 rotate(layer, new);
@@ -271,6 +302,9 @@ void insert_to_balanced_tree(int layer, char *prefix, unsigned char nexthop)
             } else {
                 now = now->right;
             }
+        } else {
+            printf("insert same ip?\n");
+            break;
         }
     }
 }
@@ -318,18 +352,21 @@ void create()
         (struct balanced_node **) malloc(sizeof(struct balanced_node *) * 2);
     bt_root[0] = (struct balanced_node *) malloc(sizeof(struct balanced_node));
     bt_root[1] = (struct balanced_node *) malloc(sizeof(struct balanced_node));
-    bt_root[0]->prefix = NULL;
-    bt_root[1]->prefix = NULL;
+    bt_root[0]->port = 256;
+    bt_root[1]->port = 256;
     begin = rdtsc();
     for (i = 0; i < num_entry; i++) {
-        insert_to_balanced_tree(0, convert_to_prefix(table[i].ip, table[i].len),
-                                table[i].port);
+        if (i % 10000 == 0) {
+            printf("(%4d/%d)\n", i, num_entry);
+        }
+        insert_to_balanced_tree(0, table[i].ip, table[i].len, table[i].port);
     }
+
     end = rdtsc();
     free(table);
 }
 ////////////////////////////////////////////////////////////////////////////////////
-int search(char *ip)
+int search(unsigned int ip)
 {
     int j;
     struct balanced_node *now;
@@ -338,11 +375,12 @@ int search(char *ip)
     for (j = 0; j <= total_layer; j++) {
         now = bt_root[j];
 
-        while (now && now->prefix) {
-            res = compare_prefix(ip, now->prefix);
-            if (res == 1)
+        while (now) {
+            // res = compare_prefix(ip, 32, now->ip, now->len);
+
+            if (ip > now->ip)  // res == 1)
                 now = now->right;
-            else if (res == -1)
+            else if (ip < now->ip)  // res == -1)
                 now = now->left;
             else
                 return now->port;
@@ -457,14 +495,14 @@ void shuffle(struct ENTRY *array, int n)
 ////////////////////////////////////////////////////////////////////////////////////
 void print_bt(struct balanced_node *node, int layer)
 {
-    if (!node || !(node->prefix)) {
+    if (!node || node->port == 256) {
         return;
     }
     int i;
     for (i = 0; i < layer; i++) {
         printf("\t");
     }
-    printf("%s", node->prefix);
+    printf("%x", node->ip);
     printf("\n");
     print_bt(node->left, layer + 1);
     print_bt(node->right, layer + 1);
@@ -497,9 +535,8 @@ int main(int argc, char *argv[])
     for (j = 0; j < 100; j++) {
         miss = 0;
         for (i = 0; i < num_query; i++) {
-            bit_string = convert_to_prefix(query[i].ip, 32);
             begin = rdtsc();
-            if (search(bit_string) == 256) {
+            if (search(query[i].ip) == 256) {
                 miss++;
                 printf("Not Found: %x\n", query[i].ip);
             }
