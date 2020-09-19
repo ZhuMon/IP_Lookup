@@ -52,7 +52,7 @@ int *create_node(int layer)
     int size = pow(2, layer);
     tmp = (int *) malloc(sizeof(int) * size);
     int i;
-    for (i = 0; i < size; i++){
+    for (i = 0; i < size; i++) {
         tmp[i] = 256;
     }
     return tmp;
@@ -61,49 +61,49 @@ int *create_node(int layer)
 void add_node(unsigned int ip, unsigned char len, unsigned char nexthop)
 {
     struct spread *ptr = root;
-    
+
     unsigned int n = ip >> 16;
-    int i,j;
+    int i, j;
     if (len <= 16) {
         for (i = 0; i < pow(2, (16 - len)); i++) {
             ptr[n + i].port = nexthop;
         }
     } else {
         int old_layer = ptr[n].layer;
-        int new_layer = len-16;
+        int new_layer = len - 16;
 
-        if (ptr[n].child == NULL){
+        if (ptr[n].child == NULL) {
             ptr[n].child = create_node(new_layer);
             old_layer = new_layer;
         }
 
-        if (old_layer < new_layer){
+        if (old_layer < new_layer) {
             // realloc
             int *new_child = create_node(new_layer);
             int sub = pow(2, (new_layer - old_layer));
             int old_poly = pow(2, old_layer);
-            for (i = 0; i < old_poly; i++){
+            for (i = 0; i < old_poly; i++) {
                 for (j = 0; j < sub; j++) {
                     new_child[i * sub + j] = ptr[n].child[i];
                 }
             }
 
-            //printf("sub: %d old_poly: %d\n", sub, old_poly);
-            //printf("new_child: %d\n", new_child[old_poly]);
+            // printf("sub: %d old_poly: %d\n", sub, old_poly);
+            // printf("new_child: %d\n", new_child[old_poly]);
             new_child[(ip & 0xffff) >> (32 - len)] = nexthop;
-            //free(ptr[n].child);
+            // free(ptr[n].child);
             ptr[n].child = new_child;
 
             ptr[n].layer = new_layer;
         } else if (old_layer > new_layer) {
             int m = ((ip & 0xffff) >> (32 - len)) << (old_layer - new_layer);
-            for (i = 0; i < pow(2, old_layer-new_layer); i++){
+            for (i = 0; i < pow(2, old_layer - new_layer); i++) {
                 ptr[n].child[m + i] = nexthop;
             }
         } else {
             int m = ((ip & 0xffff) >> (32 - len));
             ptr[n].child[m] = nexthop;
-            //printf("ip & 0xffff : %x m: %d\n", (ip&0xffff), m);
+            // printf("ip & 0xffff : %x m: %d\n", (ip&0xffff), m);
             ptr[n].layer = new_layer;
         }
         /*

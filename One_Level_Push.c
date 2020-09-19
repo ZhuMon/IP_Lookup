@@ -155,8 +155,8 @@ void set_query(char *file_name)
     }
     rewind(fp);
     query = (struct ENTRY *) malloc(num_query * sizeof(struct ENTRY));
-    my_clock = (unsigned long long int *) malloc(num_query *
-                                              sizeof(unsigned long long int));
+    my_clock = (unsigned long long int *) malloc(
+        num_query * sizeof(unsigned long long int));
     num_query = 0;
     while (fgets(string, 50, fp) != NULL) {
         read_table(string, &ip, &len, &nexthop);
@@ -265,7 +265,7 @@ void shuffle(struct ENTRY *array, int n)
     srand((unsigned) time(NULL));
     struct ENTRY *temp = (struct ENTRY *) malloc(sizeof(struct ENTRY));
 
-	int i;
+    int i;
     for (i = 0; i < n - 1; i++) {
         size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
         temp->ip = array[j].ip;

@@ -33,7 +33,7 @@ struct ENTRY *table, *query;
 int N = 0;  // number of nodes
 unsigned long long int begin, end, total = 0;
 unsigned long long int *my_clock;
-int num_node = 0;  // total number of nodes in the binary trie
+int num_node = 0;                // total number of nodes in the binary trie
 struct balanced_node **bt_root;  // an array of pointer
 int total_layer = 1;             // {0, 1}
 void print_bt(struct balanced_node *node, int layer);
@@ -478,7 +478,7 @@ void shuffle(struct ENTRY *array, int n)
     srand((unsigned) time(NULL));
     struct ENTRY *temp = (struct ENTRY *) malloc(sizeof(struct ENTRY));
 
-	int i;
+    int i;
     for (i = 0; i < n - 1; i++) {
         size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
         temp->ip = array[j].ip;

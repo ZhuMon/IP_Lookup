@@ -191,8 +191,8 @@ void set_query(char *file_name)
     }
     rewind(fp);
     query = (struct ENTRY *) malloc(num_query * sizeof(struct ENTRY));
-    my_clock = (unsigned long long int *) malloc(num_query *
-                                              sizeof(unsigned long long int));
+    my_clock = (unsigned long long int *) malloc(
+        num_query * sizeof(unsigned long long int));
     num_query = 0;
     while (fgets(string, 50, fp) != NULL) {
         read_table(string, &ip, &len, &nexthop);

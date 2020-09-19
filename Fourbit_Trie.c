@@ -42,7 +42,7 @@ btrie create_node()
     temp = (btrie) malloc(sizeof(struct list));
     temp->port = 256;  // default port
     int i;
-    for (i = 0; i < 16; i++){
+    for (i = 0; i < 16; i++) {
         temp->node[i] = NULL;
     }
     return temp;
@@ -53,12 +53,12 @@ void add_node(unsigned int ip, unsigned char len, unsigned char nexthop)
     btrie ptr = root;
     int i;
     unsigned int n;
-    for (i = 4; i < len+4; i += 4) {
-        n = (ip >> (32-i)) & 0xf;
+    for (i = 4; i < len + 4; i += 4) {
+        n = (ip >> (32 - i)) & 0xf;
         if (!ptr->node[n])
             ptr->node[n] = create_node();
         ptr = ptr->node[n];
-        if ((len < (i+4)) && (ptr->port == 256)){
+        if ((len < (i + 4)) && (ptr->port == 256)) {
             ptr->port = nexthop;
         }
     }
@@ -101,22 +101,22 @@ void read_table(char *str, unsigned int *ip, int *len, unsigned int *nexthop)
 ////////////////////////////////////////////////////////////////////////////////////
 void search(unsigned int ip)
 {
-    int j,n;
+    int j, n;
     btrie current = root, temp = NULL;
     for (j = 7; j >= 0; j--) {
         if (current == NULL)
             break;
 
-        n = (ip >> (j*4)) & 0x000f;
+        n = (ip >> (j * 4)) & 0x000f;
         current = current->node[n];
         if (current && current->port != 256)
             temp = current;
         /*else if(!current)*/
-            /*break;*/
+        /*break;*/
     }
-    if(temp==NULL)
+    if (temp == NULL)
         printf("default\n");
-    //else
+    // else
     //    printf("%u\n",temp->port);
 }
 ////////////////////////////////////////////////////////////////////////////////////
@@ -155,14 +155,14 @@ void set_query(char *file_name)
     }
     rewind(fp);
     query = (struct ENTRY *) malloc(num_query * sizeof(struct ENTRY));
-    my_clock = (unsigned long long int *) malloc(num_query *
-                                              sizeof(unsigned long long int));
+    my_clock = (unsigned long long int *) malloc(
+        num_query * sizeof(unsigned long long int));
     num_query = 0;
     while (fgets(string, 50, fp) != NULL) {
         read_table(string, &ip, &len, &nexthop);
         query[num_query].ip = ip;
-        //query[num_query].port = nexthop;
-        //query[num_query].len = len;
+        // query[num_query].port = nexthop;
+        // query[num_query].len = len;
         my_clock[num_query++] = 10000000;
     }
 }
@@ -182,7 +182,7 @@ void count_node(btrie r)
     if (r == NULL)
         return;
     int i;
-    for(i =0; i < 16; i++){
+    for (i = 0; i < 16; i++) {
         count_node(r->node[i]);
     }
     N++;
@@ -233,13 +233,14 @@ void shuffle(struct ENTRY *array, int n)
         array[i].port = temp->port;
     }
 }
-void print_trie(struct list *tmp, int count){
+void print_trie(struct list *tmp, int count)
+{
     printf("layer: %d %d\n", count, tmp->port);
     int i;
-    for(i = 0; i < 16; i++){
-        if (tmp->node[i] != NULL){
+    for (i = 0; i < 16; i++) {
+        if (tmp->node[i] != NULL) {
             printf("num: %d ", i);
-            print_trie(tmp->node[i], count+1);
+            print_trie(tmp->node[i], count + 1);
         }
     }
 }
@@ -280,6 +281,6 @@ int main(int argc, char *argv[])
     CountClock();
     ////////////////////////////////////////////////////////////////////////////
     count_node(root);
-    //printf("There are %d nodes in fourthbit trie\n",N);
+    // printf("There are %d nodes in fourthbit trie\n",N);
     return 0;
 }
